@@ -1,7 +1,7 @@
 use graphics;
 use graphics::{clear, rectangle};
 use piston::window::WindowSettings;
-use piston_window::{PistonWindow, Transformed, UpdateEvent, Window, AdvancedWindow};
+use piston_window::{PistonWindow, Transformed, UpdateEvent, Window, AdvancedWindow, Key, Button, PressEvent};
 use rand::prelude::*;
 
 use rand::thread_rng;
@@ -11,14 +11,14 @@ const BG_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 const CELL_WIDTH: usize = 100;
 const CELL_HEIGHT: usize = 100;
-const CELL_SCALE: f64 = 1.0;
+const CELL_SCALE: f64 = 0.75;
 const SCREEN_SCALE: f64 = 8.0;
 
-const SNAPSHOT_LIMIT: usize = 100;
+const SNAPSHOT_LIMIT: usize = usize::MAX - 1;
 
-const SEED_BOUNDING_BOX: usize = CELL_WIDTH / 10;
+const SEED_BOUNDING_BOX: usize = CELL_WIDTH / 2;
 
-const SEED_SPAWN_RATE: f64 = 1.05 / 4.2;
+const SEED_SPAWN_RATE: f64 = 0.45 / 4.2;
 
 const CELL_TICK_RATE: f64 = 60.0; // Tick rate in Hz
 
@@ -106,6 +106,13 @@ fn seed_cells(mut rng: ThreadRng) -> CellGrid {
     cells
 }
 
+fn get_next_skip_index(dir: isize, i: usize, max: usize) -> usize {
+    let tv = dir + i as isize;
+    if tv < 0 { 0 }
+    else if tv > max as isize { max }
+    else { tv as usize }
+}
+
 fn main() {
     let rng = thread_rng();
     let mut window: PistonWindow = WindowSettings::new(
@@ -124,24 +131,57 @@ fn main() {
     let rect = rectangle::square(0.0, 0.0, pos_x_m * CELL_SCALE);
     let mut ft: f64 = 0.0;
     let mut snapshots: Vec<[bool; CELL_HEIGHT * CELL_WIDTH]> = vec![];
+    let mut should_play: bool = false;
+    let mut skip_index: usize = 0;
     snapshots.push(seed_cells(rng.clone()));
     while let Some(e) = window.next() {
         if let Some(args) = e.update_args() {
             ft += args.dt;
-            if ft >= (1000.0 / CELL_TICK_RATE / 1000.0) {
+            if ft >= (1000.0 / CELL_TICK_RATE / 1000.0) && should_play {
                 ft = 0.0;
-                // update
-                {
-                    snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT")));
-                    if snapshots.len() > SNAPSHOT_LIMIT {
-                        snapshots.remove(0);
+                if skip_index < snapshots.len() - 1 {
+                    skip_index += 1;
+                } else {
+                    // update
+                    {
+                        snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT")));
+                        if snapshots.len() > SNAPSHOT_LIMIT {
+                            snapshots.remove(0);
+                        }
+                        skip_index = snapshots.len() - 1; // Set the skip index since we should be *playing*
                     }
                 }
-                window.set_title(format!("Cells - Snapshots: {}", snapshots.len()));
+            }
+            window.set_title(format!("Cells - {}", { if should_play { "PLAY" } else { "PAUSED" } }));
+        } else if let Some(Button::Keyboard(k)) = e.press_args() {
+            match k {
+                Key::Space => {
+                    should_play = !should_play;
+                },
+                Key::Right => {
+                    if !should_play {
+                        // Don't move through while playing
+                        let old = skip_index;
+                        skip_index = get_next_skip_index(1, skip_index, snapshots.len() - 1);
+                        if old == skip_index {
+                            snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT")));
+                            if snapshots.len() > SNAPSHOT_LIMIT {
+                                snapshots.remove(0);
+                            }
+                        }
+                    }
+                },
+                Key::Left => {
+                    if !should_play {
+                        // Don't move through while playing
+                        skip_index = get_next_skip_index(-1, skip_index, snapshots.len() - 1);
+                    }
+                },
+                _ => {}
             }
         }
         window.draw_2d(&e, |_c, g, _d| {
-            let cells = snapshots.last().expect("NO SNAPSHOT");
+            let cells = snapshots.get(skip_index).expect("NO SNAPSHOT?");
             clear(BG_COLOR, g);
             for i in 0..cells.len() {
                 let (x, y) = get_x_y(i);
