@@ -12,14 +12,14 @@ const BG_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 const CELL_WIDTH: usize = 100;
 const CELL_HEIGHT: usize = 100;
-const CELL_SCALE: f64 = 0.75;
+const CELL_SCALE: f64 = 1.0;
 const SCREEN_SCALE: f64 = 8.0;
 
-const SNAPSHOT_LIMIT: usize = usize::MAX - 1;
+const SNAPSHOT_LIMIT: usize = 10000;
 
-const SEED_BOUNDING_BOX: usize = CELL_WIDTH / 2;
+const SEED_BOUNDING_BOX: usize = (CELL_WIDTH + CELL_HEIGHT) / 2 / 5;
 
-const SEED_SPAWN_RATE: f64 = 0.45 / 4.2;
+const SEED_SPAWN_RATE: f64 = 1.0 / 4.2;
 
 const CELL_TICK_RATE: f64 = 60.0; // Tick rate in Hz
 
@@ -136,7 +136,7 @@ fn seed_cells(mut rng: ThreadRng) -> CellGrid {
 fn get_next_skip_index(dir: isize, i: usize, max: usize) -> usize {
     let tv = dir + i as isize;
     if tv < 0 { 0 }
-    else if tv > max as isize { max }
+    else if tv as usize > max { max }
     else { tv as usize }
 }
 
@@ -206,15 +206,22 @@ fn main() {
                 Key::Right => {
                     if !should_play {
                         // Don't move through while playing
-                        let old = skip_index;
-                        skip_index = get_next_skip_index(1, skip_index, snapshots.len() - 1);
-                        if old == skip_index {
+                        skip_index = get_next_skip_index(1, skip_index, SNAPSHOT_LIMIT - 1);
+                        if skip_index >= snapshots.len() || skip_index == snapshots.len() - 1 {
                             snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT"), &mut cell_rules));
                             if snapshots.len() > SNAPSHOT_LIMIT {
                                 snapshots.remove(0);
                             }
                         }
                     }
+                },
+                Key::Up => {
+                    // skip to end
+                    skip_index = snapshots.len() - 1;
+                },
+                Key::Down => {
+                    // skip to start
+                    skip_index = 0;
                 },
                 Key::Left => {
                     if !should_play {
