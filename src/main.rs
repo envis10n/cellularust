@@ -5,9 +5,7 @@ use piston_window::{PistonWindow, Transformed, UpdateEvent, Window, AdvancedWind
 use rand::prelude::*;
 
 use rand::thread_rng;
-use std::sync::Arc;
-use std::slice::{Iter, IterMut};
-use std::rc::Rc;
+use std::slice::IterMut;
 
 const CELL_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const BG_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
@@ -44,9 +42,6 @@ struct CellRules {
 impl CellRules where  {
     pub fn new() -> Self {
         CellRules { rules: vec![] }
-    }
-    pub fn new_rules(v: Vec<CellRule>) -> Self {
-        CellRules { rules: v }
     }
     pub fn add_rule<F: 'static>(&mut self, f: F) where F: FnMut(&CellGrid, CellState) -> bool {
         self.rules.push(Box::new(f));
