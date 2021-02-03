@@ -5,6 +5,9 @@ use piston_window::{PistonWindow, Transformed, UpdateEvent, Window, AdvancedWind
 use rand::prelude::*;
 
 use rand::thread_rng;
+use std::sync::Arc;
+use std::slice::{Iter, IterMut};
+use std::rc::Rc;
 
 const CELL_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const BG_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
@@ -24,6 +27,35 @@ const CELL_TICK_RATE: f64 = 60.0; // Tick rate in Hz
 
 type CellGrid = [bool; CELL_WIDTH * CELL_HEIGHT];
 
+#[derive(Clone)]
+struct CellState {
+    pub x: usize,
+    pub y: usize,
+    pub alive: bool,
+    pub neighbors_alive: u8,
+}
+
+type CellRule = Box<dyn FnMut(&CellGrid, CellState) -> bool>;
+
+struct CellRules {
+    rules: Vec<CellRule>,
+}
+
+impl CellRules where  {
+    pub fn new() -> Self {
+        CellRules { rules: vec![] }
+    }
+    pub fn new_rules(v: Vec<CellRule>) -> Self {
+        CellRules { rules: v }
+    }
+    pub fn add_rule<F: 'static>(&mut self, f: F) where F: FnMut(&CellGrid, CellState) -> bool {
+        self.rules.push(Box::new(f));
+    }
+    pub fn iter_rules(&mut self) -> IterMut<'_, CellRule> {
+        self.rules.iter_mut()
+    }
+}
+
 fn get_x_y(i: usize) -> (usize, usize) {
     (i % CELL_WIDTH, i / CELL_HEIGHT)
 }
@@ -32,10 +64,10 @@ fn get_idx(x: usize, y: usize) -> usize {
     y * CELL_HEIGHT + x
 }
 
-fn cell_generation_tick(mut cells: CellGrid) -> CellGrid {
+fn cell_generation_tick(mut cells: CellGrid, rules: &mut CellRules) -> CellGrid {
     for i in 0..cells.len() {
         let (x, y) = get_x_y(i);
-        let mut live_count = 0;
+        let mut live_count: u8 = 0;
 
         let (x_a, x_a_o) = x.overflowing_sub(1);
         let (x_b, x_b_o) = x.overflowing_add(1);
@@ -77,18 +109,18 @@ fn cell_generation_tick(mut cells: CellGrid) -> CellGrid {
             }
         }
 
-        let state = cells[i];
-        if state {
-            if live_count < 2 {
-                cells[i] = false
-            } else if live_count > 3 {
-                cells[i] = false
-            }
-        } else {
-            if live_count == 3 {
-                cells[i] = true;
-            }
+        let mut state = CellState {
+            x,
+            y,
+            alive: cells[i],
+            neighbors_alive: live_count,
+        };
+
+        for rule in rules.iter_rules() {
+            state.alive = rule(&cells, state.clone());
         }
+
+        cells[i] = state.alive;
     }
     cells
 }
@@ -113,6 +145,18 @@ fn get_next_skip_index(dir: isize, i: usize, max: usize) -> usize {
     else { tv as usize }
 }
 
+fn conway_rules(_grid: &CellGrid, cell: CellState) -> bool {
+    // Conway rules.
+    if cell.alive && cell.neighbors_alive > 3 { false }
+    else if cell.alive && cell.neighbors_alive < 2 { false }
+    else if !cell.alive {
+        if cell.neighbors_alive == 3 { true }
+        else { cell.alive }
+    } else {
+        cell.alive
+    }
+}
+
 fn main() {
     let rng = thread_rng();
     let mut window: PistonWindow = WindowSettings::new(
@@ -131,6 +175,12 @@ fn main() {
     let rect = rectangle::square(0.0, 0.0, pos_x_m * CELL_SCALE);
     let mut ft: f64 = 0.0;
     let mut snapshots: Vec<[bool; CELL_HEIGHT * CELL_WIDTH]> = vec![];
+    let mut cell_rules = CellRules::new();
+
+    // ADD RULES HERE
+        cell_rules.add_rule(conway_rules);
+    //
+
     let mut should_play: bool = false;
     let mut skip_index: usize = 0;
     snapshots.push(seed_cells(rng.clone()));
@@ -144,7 +194,7 @@ fn main() {
                 } else {
                     // update
                     {
-                        snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT")));
+                        snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT"), &mut cell_rules));
                         if snapshots.len() > SNAPSHOT_LIMIT {
                             snapshots.remove(0);
                         }
@@ -164,7 +214,7 @@ fn main() {
                         let old = skip_index;
                         skip_index = get_next_skip_index(1, skip_index, snapshots.len() - 1);
                         if old == skip_index {
-                            snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT")));
+                            snapshots.push(cell_generation_tick(snapshots.last().copied().expect("NO SNAPSHOT"), &mut cell_rules));
                             if snapshots.len() > SNAPSHOT_LIMIT {
                                 snapshots.remove(0);
                             }
