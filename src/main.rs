@@ -64,42 +64,16 @@ fn cell_generation_tick(mut cells: CellGrid, rules: &mut CellRules) -> CellGrid 
         let (x, y) = get_x_y(i);
         let mut live_count: u8 = 0;
 
-        let (x_a, x_a_o) = x.overflowing_sub(1);
-        let (x_b, x_b_o) = x.overflowing_add(1);
-        let (y_a, y_a_o) = y.overflowing_sub(1);
-        let (y_b, y_b_o) = y.overflowing_add(1);
-
-        let mut v: Vec<usize> = vec![];
-
-        if !x_a_o {
-            v.push(get_idx(x_a, y));
-        }
-        if !x_b_o {
-            v.push(get_idx(x_b, y));
-        }
-        if !y_a_o {
-            v.push(get_idx(x, y_a));
-        }
-        if !y_b_o {
-            v.push(get_idx(x, y_b));
-        }
-        if !x_a_o && !y_a_o {
-            v.push(get_idx(x_a, y_a));
-        }
-        if !x_b_o && !y_a_o {
-            v.push(get_idx(x_b, y_a));
-        }
-        if !x_a_o && !y_b_o {
-            v.push(get_idx(x_a, y_b));
-        }
-        if !x_b_o && !y_b_o {
-            v.push(get_idx(x_b, y_b));
-        }
-
-        for idx in v {
-            if idx < cells.len() {
-                if cells[idx] {
-                    live_count += 1;
+        for _x in -1..2 as isize {
+            for _y in -1..2 as isize {
+                if !(_x == 0 && _y == 0) {
+                    let x_m = _x + x as isize;
+                    let y_m = _y + y as isize;
+                    if x_m >= 0 && x_m < CELL_WIDTH as isize && y_m >= 0 && y_m < CELL_HEIGHT as isize {
+                        // within range
+                        let idx = get_idx(x_m as usize, y_m as usize);
+                        if cells[idx] { live_count += 1; }
+                    }
                 }
             }
         }
